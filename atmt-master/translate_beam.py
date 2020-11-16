@@ -23,7 +23,7 @@ def get_args():
     parser.add_argument('--data', default='data_asg4/prepared_data', help='path to data directory')
     parser.add_argument('--checkpoint-path', default='checkpoints_asg4/checkpoint_best.pt', help='path to the model file')
     parser.add_argument('--batch-size', default=None, type=int, help='maximum number of sentences in a batch')
-    parser.add_argument('--output', default='model_translations.txt', type=str,
+    parser.add_argument('--output', default='model_translations_k1.txt', type=str,
                         help='path to the output file destination')
     parser.add_argument('--max-len', default=100, type=int, help='maximum length of generated sequence')
 
@@ -36,7 +36,7 @@ def get_args():
 def main(args):
     """ Main translation function' """
     # Load arguments from checkpoint
-    torch.manual_seed(args.seed)
+    torch.manual_seed(args.seed) # sets the random seed from pytorch random number generators
     state_dict = torch.load(args.checkpoint_path, map_location=lambda s, l: default_restore_location(s, 'cpu'))
     args_loaded = argparse.Namespace(**{**vars(args), **vars(state_dict['args'])})
     args_loaded.data = args.data
@@ -73,24 +73,30 @@ def main(args):
     for i, sample in enumerate(progress_bar):
 
         # Create a beam search object or every input sentence in batch
-        batch_size = sample['src_tokens'].shape[0]
+        batch_size = sample['src_tokens'].shape[0] # returns number of rows from sample['src_tokens']
         searches = [BeamSearch(args.beam_size, args.max_len - 1, tgt_dict.unk_idx) for i in range(batch_size)]
+        # beam search with beamsize, max seq length and unkindex --> do this B times
 
-        with torch.no_grad():
+        with torch.no_grad(): # disables gradient calculation
             # Compute the encoder output
             encoder_out = model.encoder(sample['src_tokens'], sample['src_lengths'])
             # __QUESTION 1: What is "go_slice" used for and what do its dimensions represent?
+            #  encoder_out = self.encoder(src_tokens, src_lengths) decoder_out = self.decoder(tgt_inputs, encoder_out)
             go_slice = \
                 torch.ones(sample['src_tokens'].shape[0], 1).fill_(tgt_dict.eos_idx).type_as(sample['src_tokens'])
+            # vector of ones of length sample['src_tokens'] rows and 1 col filled with eos_idx casted to type sample['src_tokens']
             if args.cuda:
                 go_slice = utils.move_to_cuda(go_slice)
 
             # Compute the decoder output at the first time step
-            decoder_out, _ = model.decoder(go_slice, encoder_out)
+            decoder_out, _ = model.decoder(go_slice, encoder_out) # decoder out = decoder(tgt_inputs, encoder_out)
 
             # __QUESTION 2: Why do we keep one top candidate more than the beam size?
             log_probs, next_candidates = torch.topk(torch.log(torch.softmax(decoder_out, dim=2)),
                                                     args.beam_size+1, dim=-1)
+            # returns largest k elements (here beamsize+1) of the input torch.log(torch.softmax(decoder_out, dim=2) in dimension -1
+            # + 1 is taken because the input is given in logarithmic notation
+
 
         # Create number of beam_size beam search nodes for every input sentence
         for i in range(batch_size):
@@ -192,8 +198,8 @@ def main(args):
         # __QUESTION 6: What is the purpose of this for loop?
         temp = list()
         for sent in output_sentences:
-            first_eos = np.where(sent == tgt_dict.eos_idx)[0]
-            if len(first_eos) > 0:
+            first_eos = np.where(sent == tgt_dict.eos_idx)[0] # predicts first eos token
+            if len(first_eos) > 0: # checks if the first eos token is not the beginning (position 0)
                 temp.append(sent[:first_eos[0]])
             else:
                 temp.append(sent)
