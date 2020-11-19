@@ -1,5 +1,5 @@
-infile=model_translations_k1.txt
-outfile=model_translations_k1.out
+infile=model_translations_k3_alpha08new.txt
+outfile=model_translations_k3_alpha08new.out
 lang=en
 
 cat $infile | sed -r 's/(@@ )|(@@ ?$)//g' | perl moses_scripts/detruecase.perl | perl moses_scripts/detokenizer.perl -q -l $lang > $outfile
