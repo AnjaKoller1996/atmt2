@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument('--checkpoint-path', default='checkpoints_asg4/checkpoint_best.pt',
                         help='path to the model file')
     parser.add_argument('--batch-size', default=None, type=int, help='maximum number of sentences in a batch')
-    parser.add_argument('--output', default='model_translations_nbest_k3_alpha09_no_diversity.txt', type=str,
+    parser.add_argument('--output', default='model_translations_nbest_k3_alpha09_gamma10neg.txt', type=str,
                         help='path to the output file destination')
     parser.add_argument('--max-len', default=100, type=int, help='maximum length of generated sequence')
 

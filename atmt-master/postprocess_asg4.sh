@@ -1,5 +1,5 @@
-infile=model_translations_nbest_k3_alpha09_no_diversity.txt
-outfile=model_translations_nbest_k3_alpha09_no_diversity.out
+infile=model_translations_nbest_k3_alpha09_gamma10neg.txt
+outfile=model_translations_nbest_k3_alpha09_gamma10neg.out
 lang=en
 
 cat $infile | sed -r 's/(@@ )|(@@ ?$)//g' | perl moses_scripts/detruecase.perl | perl moses_scripts/detokenizer.perl -q -l $lang > $outfile
