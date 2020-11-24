@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument('--checkpoint-path', default='checkpoints_asg4/checkpoint_best.pt',
                         help='path to the model file')
     parser.add_argument('--batch-size', default=None, type=int, help='maximum number of sentences in a batch')
-    parser.add_argument('--output', default='model_translations_k3_alpha08new.txt', type=str,
+    parser.add_argument('--output', default='model_translations_nbest.txt', type=str,
                         help='path to the output file destination')
     parser.add_argument('--max-len', default=100, type=int, help='maximum length of generated sequence')
 
@@ -129,15 +129,13 @@ def main(args):
                 node = BeamSearchNode(searches[i], emb, lstm_out, final_hidden, final_cell,
                                       mask, torch.cat((go_slice[i], next_word)), log_p, 1)
 
-                # TODO: add normalization here according to paper
-                nodesequencelength = node.sequence.size()
-                nodesequencelength = np.asscalar(np.array(nodesequencelength))  # convert to integer
-                nodeeval = node.eval()  # gives us the log probabiltiy for ex. tensor(-0.2128)
+                # add normalization here according to paper
                 lp = normalize(node.length)
-                logp_normalized = node.logp / lp
-                normalized_nodeeval = node.eval() / lp
+                score = node.eval()/lp
+                # Add diverse
+                score = diverse(score, j)
                 # __QUESTION 3: Why do we add the node with a negative score?
-                searches[i].add(-node.eval() / lp, node)
+                searches[i].add(-score, node)
 
         # Start generating further tokens until max sentence length reached
         for _ in range(args.max_len - 1):
@@ -194,7 +192,10 @@ def main(args):
                                               node.length)
                         # Add length normalization
                         lp = normalize(node.length)
-                        search.add_final(-node.eval() / lp, node)
+                        score = node.eval()/lp
+                        # add diverse
+                        score = diverse(score, j)
+                        search.add_final(-score, node)
 
                     # Add the node to current nodes for next iteration
                     else:
@@ -204,15 +205,29 @@ def main(args):
                                               node.length + 1)
                         # Add length normalization
                         lp = normalize(node.length)
-                        search.add(-node.eval() / lp, node)
+                        score = node.eval()/lp
+                        # add diverse
+                        score = diverse(score, j)
+                        search.add(-score, node)
 
             # __QUESTION 5: What happens internally when we prune our beams?
             # How do we know we always maintain the best sequences?
             for search in searches:
                 search.prune()
 
-        # Segment into sentences
-        best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
+        # Segment into 1 best sentences
+        #best_sents = torch.stack([search.get_best()[1].sequence[1:].cpu() for search in searches])
+
+        # segment 3 best oneliner
+        best_sents = torch.stack([n[1].sequence[1:] for s in searches for n in s.get_best()])
+
+        # segment into n best sentences
+        #for s in searches:
+        #    for n in s.get_best():
+        #        best_sents = torch.stack([n[1].sequence[1:].cpu()])
+        print('n best sents', best_sents)
+
+        # concatenates a sequence of tensors, gets the one best here, so we should use the n-best (3 best) here
         decoded_batch = best_sents.numpy()
 
         output_sentences = [decoded_batch[row, :] for row in range(decoded_batch.shape[0])]
@@ -230,22 +245,29 @@ def main(args):
         # Convert arrays of indices into strings of words
         output_sentences = [tgt_dict.string(sent) for sent in output_sentences]
 
+        # here: adapt so that it takes the 3-best (aka n-best), % used for no overflow
         for ii, sent in enumerate(output_sentences):
-            all_hyps[int(sample['id'].data[ii])] = sent
+            # all_hyps[int(sample['id'].data[ii])] = sent
+            # variant for 3-best
+            all_hyps[(int(sample['id'].data[int(ii / 3)]), int(ii % 3))] = sent
 
-    # Write to file
+    # Write to file (write 3 best per sentence together)
     if args.output is not None:
         with open(args.output, 'w') as out_file:
             for sent_id in range(len(all_hyps.keys())):
-                out_file.write(all_hyps[sent_id] + '\n')
+                # variant for 1-best
+                # out_file.write(all_hyps[sent_id] + '\n')
+                # variant for 3-best
+                out_file.write(all_hyps[(int(sent_id / 3), int(sent_id % 3))] + '\n')
 
 
 def normalize(length):
     return (np.power(5 + length, args.alpha)) / (np.power(6, args.alpha))
 
 
-def diverse(nodeeval,k):
-    return nodeeval -args.gamma * k
+def diverse(nodeeval, j):
+    # implements diversity search from paper
+    return nodeeval -args.gamma * j
 
 
 if __name__ == '__main__':
